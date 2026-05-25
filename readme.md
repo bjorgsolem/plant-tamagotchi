@@ -18,15 +18,22 @@ TBD - will be finalized during prototyping.
 
 ```
 plant-tamagotchi/
-├── platformio.ini
+├── platformio.ini //define board (used for platformio)
 ├── README.md
 ├── .gitignore
 ├── src/
-│   └── main.cpp
+│   ├── main.cpp
+│   └──image_arrays.cpp //contains pixel arrays for animation frames
 ├── include/
-├── lib/
+│   ├── pins.h //set pinout
+│   └── image_arrays.h //declarations for the arrays (so main.cpp can reference them)
+├── pictures/
 ├── docs/
 └── test-sketches/
+    ├──blink-ESP32-test.cpp //first test for ESP32, verified blink on board.
+    ├──draw-tamagotchi-test.cpp //test to draw the tamagotchi to display based on info from soil sensor. three states.
+    └──soil-moisture-sensor-test.cpp //test for the soil sensor
+
 ```
 
 ## Setup
