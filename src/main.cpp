@@ -3,23 +3,40 @@
 #include "image_arrays.h"
 #include "pins.h"
 
-
 #define MOISTURE_PIN 1
-#define DRY_THRESHOLD 2000
-#define WET_THRESHOLD 1000
-enum State { DRY = 0, MOIST = 1, WET = 2 };
+#define DRY_ENTER 2000 // become DRY when reading > this
+#define DRY_EXIT 1900  // stop being DRY when reading < this
+#define WET_ENTER 1000 // become WET when reading < this
+#define WET_EXIT 1100  // stop being WET when reading > this
+
+enum State
+{
+  DRY = 0,
+  HAPPY = 1,
+  WET = 2,
+  TOUCHED = 3
+};
 
 TFT_eSPI tft = TFT_eSPI();
 
-int previousState = -1;
+int moistureState = HAPPY;
+int previousAnimation = -1;
+int activeAnimation;
 
-//Function used to scale image -> takes up less flash?
+const int frameDurations[] = {5000, 1000, 0};
+
+int currentFrameCounter = 0;
+uint32_t frameStartedAt = 0;
+
 void drawScaledImage(int destX, int destY, int destWidth, int destHeight,
-                      int srcWidth, int srcHeight, const uint16_t* imageData) {
-  uint16_t* scaledBuffer = (uint16_t*)malloc(destWidth * destHeight * sizeof(uint16_t));
+                     int srcWidth, int srcHeight, const uint16_t *imageData)
+{
+  uint16_t *scaledBuffer = (uint16_t *)malloc(destWidth * destHeight * sizeof(uint16_t));
 
-  for (int y = 0; y < destHeight; y++) {
-    for (int x = 0; x < destWidth; x++) {
+  for (int y = 0; y < destHeight; y++)
+  {
+    for (int x = 0; x < destWidth; x++)
+    {
       int srcX = (x * srcWidth) / destWidth;
       int srcY = (y * srcHeight) / destHeight;
       uint16_t color = imageData[srcY * srcWidth + srcX];
@@ -31,8 +48,43 @@ void drawScaledImage(int destX, int destY, int destWidth, int destHeight,
   free(scaledBuffer);
 }
 
+void drawFrame(int state, int counter)
+{
+  if (state == DRY)
+  {
+    if (counter == 0)
+      drawScaledImage(0, 0, 240, 280, 96, 96, epd_bitmap_dry_frame1);
+    else if (counter == 1)
+      drawScaledImage(0, 0, 240, 280, 96, 96, epd_bitmap_dry_frame2);
+    else
+      drawScaledImage(0, 0, 240, 280, 96, 96, epd_bitmap_dry_frame3);
+  }
+  else if (state == WET)
+  {
+    if (counter == 0)
+      drawScaledImage(0, 0, 240, 280, 96, 96, epd_bitmap_wet_frame1);
+    else if (counter == 1)
+      drawScaledImage(0, 0, 240, 280, 96, 96, epd_bitmap_wet_frame2);
+    else
+      drawScaledImage(0, 0, 240, 280, 96, 96, epd_bitmap_wet_frame3);
+    /*} else if (state == TOUCHED) {
+      if (counter == 0) drawScaledImage(0, 0, 240, 280, 96, 96, epd_bitmap_love_frame1);
+      else if (counter == 1) drawScaledImage(0, 0, 240, 280, 96, 96, epd_bitmap_love_frame2);
+      else drawScaledImage(0, 0, 240, 280, 96, 96, epd_bitmap_love_frame3);*/
+  }
+  else
+  {
+    if (counter == 0)
+      drawScaledImage(0, 0, 240, 280, 96, 96, epd_bitmap_happy_frame1);
+    else if (counter == 1)
+      drawScaledImage(0, 0, 240, 280, 96, 96, epd_bitmap_happy_frame2);
+    else
+      drawScaledImage(0, 0, 240, 280, 96, 96, epd_bitmap_happy_frame3);
+  }
+}
 
-void setup() {
+void setup()
+{
   Serial.begin(115200);
   delay(1000);
   tft.init();
@@ -42,43 +94,56 @@ void setup() {
   pinMode(MOISTURE_PIN, INPUT);
 }
 
-void loop() {
-  int rawValue = analogRead(MOISTURE_PIN);  
-  Serial.println(rawValue);
-  int currentState;
+void loop()
+{
+  static uint32_t lastSensorRead = -2000;
+  int rawValue; 
+  if (millis() - lastSensorRead >= 2000)
+  {
+    rawValue = analogRead(MOISTURE_PIN);
+    Serial.println(rawValue);
+    lastSensorRead = millis();
 
-  if (rawValue > DRY_THRESHOLD){
-	currentState = DRY; 
-  } else if (rawValue <  WET_THRESHOLD){
-	currentState = WET;
-  } else {
-	currentState = MOIST; 
+    if (moistureState == DRY)
+    {
+      if (rawValue < DRY_EXIT)
+        moistureState = HAPPY;
+    }
+    else if (moistureState == WET)
+    {
+      if (rawValue > WET_EXIT)
+        moistureState = HAPPY;
+    }
+    else
+    {
+      if (rawValue > DRY_ENTER)
+        moistureState = DRY;
+      else if (rawValue < WET_ENTER)
+        moistureState = WET;
+    } // if TOUCHED {activeAnimation = hearts}
   }
 
-    if (currentState != previousState) {
-		if (currentState == DRY) {
-			drawScaledImage(0, 0, 240, 280, 96, 96, epd_bitmap_dry_frame1);
-			delay(5000);
-			drawScaledImage(0, 0, 240, 280, 96, 96, epd_bitmap_dry_frame2);
-			delay(1000);
-			drawScaledImage(0, 0, 240, 280, 96, 96, epd_bitmap_dry_frame3);
-		} else if (currentState == WET) {
-			drawScaledImage(0, 0, 240, 280, 96, 96, epd_bitmap_wet_frame1);
-			delay(5000);
-			drawScaledImage(0, 0, 240, 280, 96, 96, epd_bitmap_wet_frame2);
-			delay(1000);
-			drawScaledImage(0, 0, 240, 280, 96, 96, epd_bitmap_wet_frame3);
-		} else {
-			drawScaledImage(0, 0, 240, 280, 96, 96, epd_bitmap_happy_frame1);
-			delay(5000);
-			drawScaledImage(0, 0, 240, 280, 96, 96, epd_bitmap_happy_frame2);
-			delay(1000);
-			drawScaledImage(0, 0, 240, 280, 96, 96, epd_bitmap_happy_frame3);
-		}
-		previousState = currentState; 
+  if (activeAnimation != TOUCHED)
+  {
+    activeAnimation = moistureState;
   }
-  
-  delay(500);
+
+  if (activeAnimation != previousAnimation)
+  {
+    currentFrameCounter = 0;
+    drawFrame(activeAnimation, currentFrameCounter);
+    frameStartedAt = millis();
+    previousAnimation = activeAnimation;
+  }
+  else if (currentFrameCounter < 2)
+  {
+    if (millis() - frameStartedAt >= frameDurations[currentFrameCounter])
+    {
+      currentFrameCounter++;
+      drawFrame(activeAnimation, currentFrameCounter);
+      frameStartedAt = millis();
+    }
+  } /*else if (activeAnimation == TOUCHED && millis() - frameStartedAt >= 1200){
+        activeAnimation = moistureState;
+      }*/
 }
-
-
